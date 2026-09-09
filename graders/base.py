@@ -12,6 +12,8 @@ class GradeResult:
     reason: str
     grader: str
     needs_human_review: bool = False
+    confidence: float = 1.0
+    severity: str = "medium"
 
 
 class BaseGrader(ABC):
