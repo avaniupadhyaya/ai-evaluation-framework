@@ -1,50 +1,49 @@
 # AI Evaluation Framework
 
-A lightweight, extensible framework for designing and running automated evaluations for LLM and GenAI systems.
+A lightweight, extensible reference implementation for designing and running automated evaluations for LLM and GenAI systems.
 
 The core operating principle is simple:
 
 > Start with how the system can fail, then design the evaluation pipeline around those failure modes.
 
-The framework now supports:
+This repository is built to show how evaluation can move beyond a benchmark score into a **risk-aware release system** with grader routing, regression protection, human escalation, and production feedback.
 
-- failure taxonomies and evaluation slices
-- golden sets and regression protection
-- rule-based, LLM-as-a-judge, hybrid, and human-review paths
-- provider-backed LLM judge execution with offline-safe fallback behavior
-- confidence-aware human escalation
-- severity-weighted release policy
-- `SHIP` / `REVIEW` / `BLOCK` decisions
-- production-feedback ingestion
-- structured JSON artifacts
-- Markdown and HTML release reports
-- CI validation through GitHub Actions
+## What this framework does
+
+- models failure modes as an explicit taxonomy
+- organizes evaluation into slices and golden cases
+- routes cases to rule-based, LLM-judge, hybrid, or human-review paths
+- supports provider-backed LLM judge execution with offline-safe behavior
+- escalates low-confidence / high-risk judgments for human review
+- applies severity-weighted release policy
+- produces explicit `SHIP` / `REVIEW` / `BLOCK` decisions
+- converts production failures into reusable eval assets
+- emits JSON, Markdown, and HTML release artifacts
+- validates the framework in CI with GitHub Actions
 
 ## Architecture
 
-```text
-Failure discovery
-      ↓
-Failure taxonomy
-      ↓
-Evaluation slices
-      ↓
-Test cases / golden sets
-      ↓
-Grader routing
-  ├─ rule-based
-  ├─ LLM-as-a-judge
-  ├─ human review
-  └─ hybrid / multi-signal
-      ↓
-Confidence + slice metrics
-      ↓
-Regression + severity policy
-      ↓
-SHIP / REVIEW / BLOCK
-      ↓
-Production observability
-      ↺ feeds new failures back into the taxonomy
+```mermaid
+flowchart LR
+    A[Failure discovery] --> B[Failure taxonomy]
+    B --> C[Evaluation slices]
+    C --> D[Test cases / golden sets]
+    D --> E{Grader routing}
+    E -->|Deterministic| F[Rule-based grader]
+    E -->|Subjective / semantic| G[LLM judge]
+    E -->|High-risk / uncertain| H[Hybrid + human review]
+    F --> I[Slice metrics + confidence]
+    G --> I
+    H --> I
+    I --> J[Regression + severity policy]
+    J --> K{Release decision}
+    K -->|Pass| L[SHIP]
+    K -->|Unresolved judgment| M[REVIEW]
+    K -->|Policy failure| N[BLOCK]
+    L --> O[Production observability]
+    M --> O
+    N --> O
+    O -. new failures .-> A
 ```
 
 ## Why this exists
@@ -65,6 +64,28 @@ This framework treats production failures as reusable evaluation assets. A meani
 
 Over time, the pipeline becomes **institutional memory for model quality**.
 
+## End-to-end demo
+
+The included demo models a candidate release that performs well on some quality dimensions but regresses on a blocking tool-use slice and produces low-confidence safety judgments.
+
+The framework preserves those differences instead of averaging them into one score.
+
+```text
+Candidate model
+      ↓
+Groundedness          PASS
+Instruction following PASS
+Safety                REVIEW
+Tool use              FAIL
+Format compliance     PASS
+      ↓
+Severity + regression policy
+      ↓
+RELEASE DECISION: BLOCK
+```
+
+See [`docs/DEMO_SCENARIO.md`](docs/DEMO_SCENARIO.md) for the full walkthrough.
+
 ## Quick start
 
 ```bash
@@ -75,7 +96,7 @@ python run_eval.py \
   --report-dir artifacts/reports
 ```
 
-A run produces:
+A run produces structured artifacts that can be consumed by CI/CD or reviewed directly:
 
 ```text
 artifacts/
@@ -98,13 +119,26 @@ Each slice can define:
 - blocker behavior
 - severity weight
 
-The release layer then combines frequency, severity, regression, and pending human-review state into an explicit decision:
+The release layer combines failure frequency, severity, regression, grader confidence, and pending human-review state into an explicit decision:
 
 - **SHIP** — configured quality and risk policies pass
 - **REVIEW** — no blocking failure, but unresolved human judgment remains
-- **BLOCK** — a release policy or blocker condition fails
+- **BLOCK** — a blocker or release-policy condition fails
 
 This avoids compressing heterogeneous model behavior into one aggregate score.
+
+## Grader routing
+
+Different behaviors require different evaluation strategies.
+
+| Behavior type | Typical strategy | Rationale |
+|---|---|---|
+| Deterministic requirements | Rule-based grader | Cheap, repeatable, high confidence |
+| Subjective quality | LLM judge or calibrated humans | Requires semantic judgment |
+| High-risk / low-confidence cases | Hybrid + human escalation | Avoids forcing uncertain judgments into automation |
+| Recurrent regressions | Permanent golden tests | Prevents rediscovery of known failures |
+
+The judge is treated as another model in the system, not as ground truth.
 
 ## Evaluation observability
 
@@ -126,7 +160,25 @@ The LLM judge layer supports an OpenAI-compatible provider adapter while preserv
 
 A provider failure does not silently become a positive evaluation. The framework fails safely by surfacing uncertainty and escalating to human review when necessary.
 
-See the provider architecture documentation in `docs/`.
+## Production feedback loop
+
+A meaningful production failure should not end as a bug fix.
+
+```text
+Production failure
+      ↓
+Reproduce
+      ↓
+Update taxonomy
+      ↓
+Create slice / golden case
+      ↓
+Choose grader + threshold
+      ↓
+Add regression protection
+```
+
+That loop is what turns the framework from a scoring harness into a quality system that improves over time.
 
 ## Repository structure
 
@@ -146,27 +198,14 @@ See the provider architecture documentation in `docs/`.
 
 ## Design principles
 
-1. **Failure-first, not benchmark-first**  
-   Define what can go wrong before choosing how to measure it.
-
-2. **Preserve diagnostic resolution**  
-   Aggregate metrics are useful only after slice-level behavior is visible.
-
-3. **Route evaluation by risk and judgment type**  
-   Deterministic checks, LLM judges, human review, and hybrid strategies have different failure modes.
-
-4. **Treat evaluator confidence as a policy input**  
-   Low-confidence or high-impact judgments should not be forced into binary automation.
-
-5. **Make release decisions explicit**  
-   Evaluation should connect directly to regression tolerance, severity, and launch gates.
-
-6. **Feed production back into evaluation**  
-   New failures should strengthen the framework rather than disappear after incident resolution.
-
-7. **Make every decision auditable**  
-   Reports should explain why a release shipped, paused for review, or was blocked.
+1. **Failure-first, not benchmark-first** — define what can go wrong before choosing how to measure it.
+2. **Preserve diagnostic resolution** — aggregate metrics are useful only after slice-level behavior is visible.
+3. **Route evaluation by risk and judgment type** — deterministic checks, LLM judges, human review, and hybrid strategies have different failure modes.
+4. **Treat evaluator confidence as a policy input** — low-confidence or high-impact judgments should not be forced into binary automation.
+5. **Make release decisions explicit** — connect evaluation directly to regression tolerance, severity, and launch gates.
+6. **Feed production back into evaluation** — new failures should strengthen the framework rather than disappear after incident resolution.
+7. **Make every decision auditable** — reports should explain why a release shipped, paused for review, or was blocked.
 
 ## Status
 
-This repository is a reference implementation intended to demonstrate evaluation-system design patterns. The sample dataset is deliberately small; the architecture is structured so teams can replace the data, provider adapter, graders, and release policy without rewriting the full pipeline.
+This repository is a reference implementation intended to demonstrate evaluation-system design patterns. The sample dataset is deliberately small; teams can replace the data, provider adapter, graders, and release policy without rewriting the full pipeline.
