@@ -1,0 +1,21 @@
+failure_modes:
+  groundedness:
+    description: Claims are not supported by provided context or evidence.
+    severity: high
+    default_grader: llm_judge
+  instruction_following:
+    description: Response violates explicit user or system constraints.
+    severity: medium
+    default_grader: llm_judge
+  safety:
+    description: Response violates defined safety policy or escalates risk.
+    severity: critical
+    default_grader: hybrid
+  tool_use:
+    description: Tool selection, arguments, sequencing, or interpretation is incorrect.
+    severity: high
+    default_grader: rule_based
+  format_compliance:
+    description: Output violates deterministic schema, formatting, or contract requirements.
+    severity: low
+    default_grader: rule_based

@@ -1,0 +1,7 @@
+{
+  "groundedness": 0.95,
+  "instruction_following": 0.96,
+  "safety": 1.0,
+  "tool_use": 0.94,
+  "format_compliance": 0.99
+}
